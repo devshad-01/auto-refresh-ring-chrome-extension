@@ -1,6 +1,5 @@
 // Offscreen document for playing alarm sounds
 const audio = document.getElementById('alarm');
-let audioCtx = null;
 let beepInterval = null;
 let isPlaying = false;
 
@@ -23,8 +22,14 @@ function playAlarm() {
   if (isPlaying) return;
   isPlaying = true;
   
-  // Always use beeps for reliability (mp3 might not work)
-  playBeeps();
+  // Play alert.mp3 on loop
+  audio.src = chrome.runtime.getURL('alert.mp3');
+  audio.loop = true;
+  audio.volume = 1.0;
+  audio.play().catch(err => {
+    console.log('MP3 failed, using beeps:', err);
+    playBeeps();
+  });
 }
 
 function stopAlarm() {
@@ -37,10 +42,11 @@ function stopAlarm() {
   }
 }
 
+// Fallback beeps if mp3 fails
 function playBeeps() {
   if (beepInterval) return;
   
-  audioCtx = audioCtx || new AudioContext();
+  const audioCtx = new AudioContext();
   
   function beep() {
     if (!isPlaying) {

@@ -229,17 +229,16 @@ async function playAlarmSound() {
   }
 }
 
-// Show notification with embedded icon data URL
+// Show notification with embedded icon
 function showNotification(message) {
   const notifId = 'webAlert_' + Date.now();
   chrome.notifications.create(notifId, {
     type: 'basic',
-    iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC0ElEQVR4Ae2XA5AkQRCGe23btm3btm3btm3btm3btu3d/4vNyczpndNT1TX76avqL+NLJ+OxjIwMpEBKBBBKwEAgASgBL6FkoAS8hZJQAl5CSSgBL6EklICXUBJKwEsomf8tAZvPCNj8ScDmTwI2XxGw+YuAzWcEbN4Ctp9g8wdsviNg8wdsPiJg8ymw/QibjwhsPsDmXWD7DrC9A2zvANs7wPYOsL0DbO8A2ztk/XLt15Bs/4bN/wPb/wmZf8nm/4TN/4TN98D2d2D7K7D9Fdj+AmzfA9u3gO0bwPY1YPsKsH0Z2P4KbF8Cti8C2xeB7c/A9mdg+xOw/RHY/gBsvwe23wLbb4DtN8D2a2D7FbD9Eth+DWy/ALZfANvPge1nwPZTYPsJsP0Y2H4EbD8Eth8A2/eB7XvA9l1g+w6wfRvYvgVs3wS2bwDb14Dtq8D2FWD7MrB9Cdi+CGxfALbPA9vngO2zwPYZYPs0sH0K2D4JbJ8Atk8A28eB7WPA9lFg+wiwfRjYPgRsHwS2DwDbB4Dt/cD2PmB7L7C9B9jeDWzvArZ3Ats7gO3twPY2YHsrsL0F2N4MbG8CtjcC2xuA7fXA9jpgey2wvQbYXg1srwK2VwLbK4Dt5cD2MmB7KbC9BNheDGwvArYXAtsLgO35wPY8YHsusD0H2J4NbM8CtmcC2zOA7enA9jRgeyqwPQXYngxsTwK2JwLbE4Dt8cD2OGB7LLA9BtgeDWyPArZHAtsjgO3hwPYwYHsosD0E2B4MbA8CtgcC2wOA7f7Adj9guw+w3QfY7g1s9wK2ewLbPYDt7sB2N2C7K7DdBdjuDGx3ArY7AtsdgO32wHY7YLstsN0G2G4NbLcCtlsC2y2A7ebAdjNguymw3QTYbgxsNwK2GwLbDYDt+sB2PWC7LrBdB9iuDWzXArZrAts1gO3qwHY1YLsqsF0F2K4MbFcCtv8AzaUhJUyVTQYAAAAASUVORK5CYII=',
-    title: '🔔 ALERT TRIGGERED!',
+    iconUrl: chrome.runtime.getURL('icon.png'),
+    title: 'ALERT TRIGGERED!',
     message: message,
     priority: 2,
-    requireInteraction: true,
-    silent: false
+    requireInteraction: true
   });
 }
 

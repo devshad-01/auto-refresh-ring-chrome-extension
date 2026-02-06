@@ -21,6 +21,12 @@
     "default_popup": "popup.html",
     "default_title": "Auto Refresh Ring/Notify"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["alert.mp3", "icon.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
