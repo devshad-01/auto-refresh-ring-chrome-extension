@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Refresh Ring/Notify</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="logo">🔔</span>
+      <span class="title">Auto Refresh</span>
+      <span class="status-dot" id="statusDot"></span>
+    </div>
+
+    <input type="text" id="targetText" class="input" placeholder="Text to watch for...">
+
+    <div class="row">
+      <label class="chip"><input type="radio" name="alertMode" value="found" checked><span>When FOUND</span></label>
+      <label class="chip"><input type="radio" name="alertMode" value="notFound"><span>When GONE</span></label>
+    </div>
+
+    <div class="row">
+      <label class="chip"><input type="checkbox" id="alertRinging" checked><span>🔊 Ring</span></label>
+      <label class="chip"><input type="checkbox" id="alertNotification" checked><span>📬 Notify</span></label>
+      <label class="chip"><input type="checkbox" id="autoRefresh"><span>🔄 Refresh</span></label>
+    </div>
+
+    <div class="row">
+      <input type="number" id="intervalValue" class="input-sm" value="10" min="1">
+      <select id="intervalUnit" class="select-sm">
+        <option value="seconds">sec</option>
+        <option value="minutes">min</option>
+        <option value="hours">hr</option>
+      </select>
+      <button id="startBtn" class="btn-start">▶ START</button>
+      <button id="stopBtn" class="btn-stop" disabled>⏹ STOP</button>
+    </div>
+
+    <button id="stopAlarmBtn" class="btn-alarm" style="display:none;">🔕 STOP ALARM</button>
+  </div>
+
+  <audio id="alarmAudio" loop><source src="alert.mp3" type="audio/mpeg"></audio>
+  <script src="popup.js"></script>
+</body>
+</html>

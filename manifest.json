@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Auto Refresh Ring/Notify",
+  "version": "1.0.0",
+  "description": "Monitor any webpage for specific text and get continuous alerts until acknowledged. Perfect for traders, e-commerce watchers, and crypto enthusiasts.",
+  "permissions": [
+    "notifications",
+    "storage",
+    "alarms",
+    "activeTab",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Auto Refresh Ring/Notify"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
