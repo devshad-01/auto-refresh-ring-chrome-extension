@@ -1,265 +1,325 @@
-// Auto Refresh Ring/Notify - Background Service Worker
-// Fast, persistent text monitoring with offscreen audio
+const CHECK_ALARM = 'monitor-check';
+const REPEAT_NOTIFICATION_ALARM = 'repeat-notification';
 
-let isMonitoring = false;
-let checkIntervalId = null;
-let currentTabId = null;
-let lastTextFound = null;
-let alarmSounding = false;
-let monitorSettings = null;
-let creatingOffscreen = false;
+const state = {
+  isMonitoring: false,
+  currentTabId: null,
+  monitorSettings: null,
+  lastTextFound: null,
+  alarmSounding: false,
+  lastAlertMessage: null,
+  creatingOffscreen: false
+};
 
-// Initialize on install
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ isMonitoring: false, alarmSounding: false });
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.storage.local.set({ isMonitoring: false, alarmSounding: false });
 });
 
-// Restore monitoring on startup
 chrome.runtime.onStartup.addListener(async () => {
-  const data = await chrome.storage.local.get(['isMonitoring', 'currentTabId', 'monitorSettings']);
-  if (data.isMonitoring && data.currentTabId && data.monitorSettings) {
-    currentTabId = data.currentTabId;
-    monitorSettings = data.monitorSettings;
-    isMonitoring = true;
-    startCheckLoop();
-  }
+  await restoreState();
 });
 
-// Create offscreen document for audio playback
-async function setupOffscreen() {
-  if (creatingOffscreen) return;
-  
-  // Check if already exists using getContexts
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
-  
-  if (existingContexts.length > 0) return;
-  
-  creatingOffscreen = true;
-  try {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Play alarm sound when alert triggers'
-    });
-  } catch (e) {
-    // Ignore errors
-  }
-  creatingOffscreen = false;
-}
-
-// Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  switch (message.action) {
-    case 'startMonitoring':
-      startMonitoring(message.settings);
-      sendResponse({ success: true });
-      break;
-    case 'stopMonitoring':
-      stopMonitoring();
-      sendResponse({ success: true });
-      break;
-    case 'stopAlarm':
-      stopAlarm();
-      sendResponse({ success: true });
-      break;
-    case 'getStatus':
-      sendResponse({ isMonitoring, alarmSounding });
-      break;
-    case 'textCheckResult':
-      processTextCheckResult(message.found);
-      sendResponse({ success: true });
-      break;
-  }
+  handleMessage(message, sender)
+    .then((result) => sendResponse({ success: true, ...result }))
+    .catch((error) => sendResponse({ success: false, error: error.message }));
   return true;
 });
 
-// Start monitoring
-async function startMonitoring(settings) {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tabs.length) return;
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === CHECK_ALARM) {
+    await performTextCheck();
+  }
 
-  currentTabId = tabs[0].id;
-  monitorSettings = settings;
-  isMonitoring = true;
-  lastTextFound = null;
+  if (alarm.name === REPEAT_NOTIFICATION_ALARM) {
+    await repeatNotificationTick();
+  }
+});
 
-  await chrome.storage.local.set({ isMonitoring: true, currentTabId, monitorSettings: settings });
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+  if (notificationId.startsWith('webAlert_')) {
+    await stopAlarm();
+  }
+});
 
-  // Immediate first check
-  performTextCheck();
-  
-  // Start the check loop
-  startCheckLoop();
-}
-
-// Calculate interval in ms
-function getIntervalMs() {
-  if (!monitorSettings) return 5000;
-  let ms = monitorSettings.interval * 1000;
-  if (monitorSettings.unit === 'minutes') ms *= 60;
-  else if (monitorSettings.unit === 'hours') ms *= 3600;
-  return Math.max(ms, 1000);
-}
-
-// Start persistent check loop
-function startCheckLoop() {
-  stopCheckLoop();
-  const intervalMs = getIntervalMs();
-  checkIntervalId = setInterval(() => {
-    if (isMonitoring) performTextCheck();
-  }, intervalMs);
-}
-
-// Stop check loop
-function stopCheckLoop() {
-  if (checkIntervalId) {
-    clearInterval(checkIntervalId);
-    checkIntervalId = null;
+async function handleMessage(message, sender) {
+  switch (message.action) {
+    case 'startMonitoring':
+      await startMonitoring(message.settings, sender);
+      return {};
+    case 'stopMonitoring':
+      await stopMonitoring();
+      return {};
+    case 'stopAlarm':
+      await stopAlarm();
+      return {};
+    case 'getStatus':
+      return {
+        isMonitoring: state.isMonitoring,
+        alarmSounding: state.alarmSounding
+      };
+    default:
+      return {};
   }
 }
 
-// Stop monitoring
-async function stopMonitoring() {
-  isMonitoring = false;
-  stopCheckLoop();
-  currentTabId = null;
-  lastTextFound = null;
-  monitorSettings = null;
-  await chrome.storage.local.set({ isMonitoring: false });
+async function restoreState() {
+  const data = await chrome.storage.local.get([
+    'isMonitoring',
+    'currentTabId',
+    'monitorSettings',
+    'alarmSounding'
+  ]);
+
+  state.isMonitoring = Boolean(data.isMonitoring);
+  state.currentTabId = data.currentTabId ?? null;
+  state.monitorSettings = data.monitorSettings ?? null;
+  state.alarmSounding = Boolean(data.alarmSounding);
+
+  if (state.isMonitoring && state.currentTabId && state.monitorSettings) {
+    scheduleCheckAlarm();
+  }
 }
 
-// Stop alarm
+async function startMonitoring(settings, sender) {
+  if (!settings?.targetText?.trim()) {
+    throw new Error('Target text is required');
+  }
+
+  const tabId = sender?.tab?.id ?? (await getActiveTabId());
+  if (!tabId) {
+    throw new Error('No active tab found');
+  }
+
+  state.currentTabId = tabId;
+  state.monitorSettings = {
+    targetText: settings.targetText.trim(),
+    alertMode: settings.alertMode,
+    alertType: settings.alertType,
+    interval: Math.max(Number(settings.interval) || 10, 1),
+    unit: settings.unit,
+    autoRefresh: Boolean(settings.autoRefresh)
+  };
+  state.lastTextFound = null;
+  state.isMonitoring = true;
+
+  await chrome.storage.local.set({
+    isMonitoring: true,
+    currentTabId: state.currentTabId,
+    monitorSettings: state.monitorSettings
+  });
+
+  await performTextCheck();
+  scheduleCheckAlarm();
+}
+
+async function stopMonitoring() {
+  state.isMonitoring = false;
+  state.currentTabId = null;
+  state.monitorSettings = null;
+  state.lastTextFound = null;
+
+  await chrome.alarms.clear(CHECK_ALARM);
+  await chrome.storage.local.set({
+    isMonitoring: false,
+    currentTabId: null,
+    monitorSettings: null
+  });
+}
+
 async function stopAlarm() {
-  alarmSounding = false;
+  state.alarmSounding = false;
+  state.lastAlertMessage = null;
+
   await chrome.storage.local.set({ alarmSounding: false });
-  
-  // Stop offscreen audio
+  await chrome.alarms.clear(REPEAT_NOTIFICATION_ALARM);
+
   try {
     await setupOffscreen();
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'stopAlarm' });
-  } catch (e) {}
-  
-  // Stop repeated notifications
-  if (repeatId) {
-    clearInterval(repeatId);
-    repeatId = null;
+  } catch (_error) {
   }
-  
-  // Clear notifications
+
   const notifications = await chrome.notifications.getAll();
-  for (const id of Object.keys(notifications)) {
-    await chrome.notifications.clear(id);
-  }
+  await Promise.all(
+    Object.keys(notifications)
+      .filter((id) => id.startsWith('webAlert_'))
+      .map((id) => chrome.notifications.clear(id))
+  );
 }
 
-// Perform text check - FAST direct injection
 async function performTextCheck() {
-  if (!isMonitoring || !currentTabId || !monitorSettings) return;
+  if (!state.isMonitoring || !state.currentTabId || !state.monitorSettings) {
+    return;
+  }
 
   try {
-    await chrome.tabs.get(currentTabId);
+    await chrome.tabs.get(state.currentTabId);
 
-    if (monitorSettings.autoRefresh) {
-      await chrome.tabs.reload(currentTabId);
-      await new Promise(r => setTimeout(r, 1500));
+    if (state.monitorSettings.autoRefresh) {
+      await chrome.tabs.reload(state.currentTabId);
+      await waitForTabLoad(state.currentTabId, 20000);
     }
 
-    // Direct script execution - much faster than content script messaging
     const results = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
+      target: { tabId: state.currentTabId },
       func: (targetText) => {
         const search = targetText.toLowerCase().trim();
         const body = document.body?.innerText?.toLowerCase() || '';
         return body.includes(search);
       },
-      args: [monitorSettings.targetText]
+      args: [state.monitorSettings.targetText]
     });
 
-    if (results?.[0]) processTextCheckResult(results[0].result);
-  } catch (err) {
-    if (err.message?.includes('No tab')) stopMonitoring();
+    const textFound = Boolean(results?.[0]?.result);
+    await processTextCheckResult(textFound);
+  } catch (error) {
+    const message = String(error?.message || '');
+    const isTabGone = message.includes('No tab with id') || message.includes('cannot be edited');
+    const isRestrictedPage = message.includes('Cannot access a chrome:// URL');
+
+    if (isTabGone || isRestrictedPage) {
+      await stopMonitoring();
+    }
   }
 }
 
-// Process result
-function processTextCheckResult(textFound) {
-  if (!monitorSettings) return;
-
-  let shouldAlert = false;
-  if (monitorSettings.alertMode === 'found' && textFound) shouldAlert = true;
-  else if (monitorSettings.alertMode === 'notFound' && !textFound) shouldAlert = true;
-
-  if (shouldAlert && lastTextFound !== textFound) {
-    triggerAlert(textFound);
+async function processTextCheckResult(textFound) {
+  if (!state.monitorSettings) {
+    return;
   }
-  lastTextFound = textFound;
+
+  const shouldAlert =
+    (state.monitorSettings.alertMode === 'found' && textFound) ||
+    (state.monitorSettings.alertMode === 'notFound' && !textFound);
+
+  if (shouldAlert && state.lastTextFound !== textFound) {
+    await triggerAlert(textFound);
+  }
+
+  state.lastTextFound = textFound;
 }
 
-// Trigger alert
 async function triggerAlert(textFound) {
-  alarmSounding = true;
+  state.alarmSounding = true;
+
+  const statusLabel = textFound ? 'FOUND' : 'NOT FOUND';
+  const message = `"${state.monitorSettings.targetText}" is ${statusLabel}.`;
+  state.lastAlertMessage = message;
+
   await chrome.storage.local.set({ alarmSounding: true });
 
-  const status = textFound ? 'FOUND' : 'NOT FOUND';
-  const msg = `"${monitorSettings.targetText}" is ${status}!`;
-
-  // Desktop Notification
-  if (monitorSettings.alertType === 'notification' || monitorSettings.alertType === 'both') {
-    showNotification(msg);
-    // Start repeating notifications every 4 seconds
-    startRepeatingNotifications(msg);
+  if (state.monitorSettings.alertType === 'notification' || state.monitorSettings.alertType === 'both') {
+    await showNotification(message);
+    await chrome.alarms.create(REPEAT_NOTIFICATION_ALARM, { periodInMinutes: 0.1 });
   }
 
-  // Ringing alarm via offscreen document
-  if (monitorSettings.alertType === 'ringing' || monitorSettings.alertType === 'both') {
+  if (state.monitorSettings.alertType === 'ringing' || state.monitorSettings.alertType === 'both') {
     await playAlarmSound();
   }
 }
 
-// Play alarm using offscreen document
-async function playAlarmSound() {
-  try {
-    await setupOffscreen();
-    await new Promise(r => setTimeout(r, 100));
-    await chrome.runtime.sendMessage({ target: 'offscreen', action: 'playAlarm' });
-  } catch (e) {
-    // Offscreen failed, notifications will still work
+async function repeatNotificationTick() {
+  const data = await chrome.storage.local.get(['alarmSounding']);
+  if (!data.alarmSounding || !state.lastAlertMessage) {
+    await chrome.alarms.clear(REPEAT_NOTIFICATION_ALARM);
+    return;
   }
+
+  await showNotification(state.lastAlertMessage);
 }
 
-// Show notification with embedded icon
-function showNotification(message) {
-  const notifId = 'webAlert_' + Date.now();
-  chrome.notifications.create(notifId, {
+async function showNotification(message) {
+  const notificationId = `webAlert_${Date.now()}`;
+  await chrome.notifications.create(notificationId, {
     type: 'basic',
-    iconUrl: chrome.runtime.getURL('icon.png'),
-    title: 'ALERT TRIGGERED!',
-    message: message,
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: 'Auto Refresh Alert',
+    message,
     priority: 2,
     requireInteraction: true
   });
 }
 
-// Repeat notifications
-let repeatId = null;
-function startRepeatingNotifications(msg) {
-  if (repeatId) clearInterval(repeatId);
-  repeatId = setInterval(async () => {
-    const data = await chrome.storage.local.get(['alarmSounding']);
-    if (!data.alarmSounding) { 
-      clearInterval(repeatId); 
-      repeatId = null; 
-      return; 
-    }
-    showNotification(msg);
-  }, 4000);
+function scheduleCheckAlarm() {
+  if (!state.isMonitoring || !state.monitorSettings) {
+    return;
+  }
+
+  const intervalMs = getIntervalMs(state.monitorSettings.interval, state.monitorSettings.unit);
+  const periodInMinutes = Math.max(intervalMs / 60000, 0.1);
+
+  chrome.alarms.create(CHECK_ALARM, { periodInMinutes });
 }
 
-// Click notification to stop alarm
-chrome.notifications.onClicked.addListener((id) => {
-  if (id.startsWith('webAlert_')) stopAlarm();
-});
+function getIntervalMs(intervalValue, unit) {
+  let seconds = intervalValue;
 
-console.log('Auto Refresh Ring/Notify background loaded');
+  if (unit === 'minutes') {
+    seconds *= 60;
+  } else if (unit === 'hours') {
+    seconds *= 3600;
+  }
+
+  return Math.max(seconds * 1000, 1000);
+}
+
+async function getActiveTabId() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs?.[0]?.id ?? null;
+}
+
+async function setupOffscreen() {
+  if (state.creatingOffscreen) {
+    return;
+  }
+
+  if (typeof chrome.runtime.getContexts === 'function') {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (contexts.length > 0) {
+      return;
+    }
+  }
+
+  state.creatingOffscreen = true;
+  try {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: 'Play repeating alarm audio when a monitored condition is met.'
+    });
+  } finally {
+    state.creatingOffscreen = false;
+  }
+}
+
+async function playAlarmSound() {
+  try {
+    await setupOffscreen();
+    await chrome.runtime.sendMessage({ target: 'offscreen', action: 'playAlarm' });
+  } catch (_error) {
+  }
+}
+
+function waitForTabLoad(tabId, timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }, timeoutMs);
+
+    const onUpdated = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId) {
+        return;
+      }
+
+      if (changeInfo.status === 'complete') {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}

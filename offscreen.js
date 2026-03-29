@@ -1,33 +1,37 @@
-// Offscreen document for playing alarm sounds
 const audio = document.getElementById('alarm');
-let beepInterval = null;
 let isPlaying = false;
+let beepIntervalId = null;
+let fallbackAudioContext = null;
 
-// Listen for messages from background (check target field)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Only respond to messages targeted at offscreen
-  if (msg.target !== 'offscreen') return;
-  
+  if (msg.target !== 'offscreen') {
+    return;
+  }
+
   if (msg.action === 'playAlarm') {
     playAlarm();
     sendResponse({ success: true });
-  } else if (msg.action === 'stopAlarm') {
+  }
+
+  if (msg.action === 'stopAlarm') {
     stopAlarm();
     sendResponse({ success: true });
   }
+
   return true;
 });
 
 function playAlarm() {
-  if (isPlaying) return;
+  if (isPlaying) {
+    return;
+  }
+
   isPlaying = true;
-  
-  // Play alert.mp3 on loop
   audio.src = chrome.runtime.getURL('alert.mp3');
   audio.loop = true;
   audio.volume = 1.0;
-  audio.play().catch(err => {
-    console.log('MP3 failed, using beeps:', err);
+
+  audio.play().catch(() => {
     playBeeps();
   });
 }
@@ -36,39 +40,47 @@ function stopAlarm() {
   isPlaying = false;
   audio.pause();
   audio.currentTime = 0;
-  if (beepInterval) {
-    clearInterval(beepInterval);
-    beepInterval = null;
+
+  if (beepIntervalId) {
+    clearInterval(beepIntervalId);
+    beepIntervalId = null;
   }
+
+  if (fallbackAudioContext?.state !== 'closed') {
+    fallbackAudioContext?.close();
+  }
+
+  fallbackAudioContext = null;
 }
 
-// Fallback beeps if mp3 fails
 function playBeeps() {
-  if (beepInterval) return;
-  
-  const audioCtx = new AudioContext();
-  
+  if (beepIntervalId) {
+    return;
+  }
+
+  if (!fallbackAudioContext || fallbackAudioContext.state === 'closed') {
+    fallbackAudioContext = new AudioContext();
+  }
+
   function beep() {
     if (!isPlaying) {
-      clearInterval(beepInterval);
-      beepInterval = null;
+      clearInterval(beepIntervalId);
+      beepIntervalId = null;
       return;
     }
-    
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+
+    const osc = fallbackAudioContext.createOscillator();
+    const gain = fallbackAudioContext.createGain();
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(fallbackAudioContext.destination);
     osc.frequency.value = 880;
     osc.type = 'square';
-    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+    gain.gain.setValueAtTime(0.5, fallbackAudioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, fallbackAudioContext.currentTime + 0.35);
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.35);
+    osc.stop(fallbackAudioContext.currentTime + 0.35);
   }
-  
-  beep();
-  beepInterval = setInterval(beep, 1000);
-}
 
-console.log('Offscreen audio player ready');
+  beep();
+  beepIntervalId = setInterval(beep, 1000);
+}

@@ -1,47 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Auto Refresh Ring/Notify</title>
+  <title>Auto Refresh Alert</title>
   <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <div class="container">
-    <div class="header">
-      <span class="logo">🔔</span>
-      <span class="title">Auto Refresh</span>
-      <span class="status-dot" id="statusDot"></span>
+    <div class="header" role="banner">
+      <img src="icons/icon48.png" alt="Auto Refresh Alert logo" class="logo">
+      <div>
+        <h1 class="title">Auto Refresh Alert</h1>
+        <p class="subtitle">Monitor text and trigger persistent alerts</p>
+      </div>
+      <span class="status-dot" id="statusDot" aria-label="Monitoring status" title="Monitoring status"></span>
     </div>
 
-    <input type="text" id="targetText" class="input" placeholder="Text to watch for...">
+    <label for="targetText" class="label">Target text</label>
+    <input type="text" id="targetText" class="input" placeholder="Example: In Stock">
 
-    <div class="row">
-      <label class="chip"><input type="radio" name="alertMode" value="found" checked><span>When FOUND</span></label>
-      <label class="chip"><input type="radio" name="alertMode" value="notFound"><span>When GONE</span></label>
+    <fieldset class="group" aria-label="Alert condition">
+      <legend class="group-title">Trigger condition</legend>
+      <div class="row">
+        <label class="chip"><input type="radio" name="alertMode" value="found" checked><span>When text is
+            found</span></label>
+        <label class="chip"><input type="radio" name="alertMode" value="notFound"><span>When text is
+            missing</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="group" aria-label="Alert channels">
+      <legend class="group-title">Alert channels</legend>
+      <div class="row">
+        <label class="chip"><input type="checkbox" id="alertRinging" checked><span>Ringing audio</span></label>
+        <label class="chip"><input type="checkbox" id="alertNotification" checked><span>Desktop
+            notification</span></label>
+      </div>
+    </fieldset>
+
+    <label class="chip auto-refresh-toggle"><input type="checkbox" id="autoRefresh"><span>Refresh tab before each
+        check</span></label>
+
+    <div class="schedule">
+      <label for="intervalValue" class="label">Check every</label>
+      <div class="row schedule-controls">
+        <input type="number" id="intervalValue" class="input-sm" value="10" min="1" aria-label="Interval value">
+        <select id="intervalUnit" class="select-sm" aria-label="Interval unit">
+          <option value="seconds">seconds</option>
+          <option value="minutes">minutes</option>
+          <option value="hours">hours</option>
+        </select>
+      </div>
     </div>
 
-    <div class="row">
-      <label class="chip"><input type="checkbox" id="alertRinging" checked><span>🔊 Ring</span></label>
-      <label class="chip"><input type="checkbox" id="alertNotification" checked><span>📬 Notify</span></label>
-      <label class="chip"><input type="checkbox" id="autoRefresh"><span>🔄 Refresh</span></label>
+    <div id="feedback" class="feedback" aria-live="polite"></div>
+
+    <div class="row action-row">
+      <button id="startBtn" class="btn btn-primary">Start monitoring</button>
+      <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
     </div>
 
-    <div class="row">
-      <input type="number" id="intervalValue" class="input-sm" value="10" min="1">
-      <select id="intervalUnit" class="select-sm">
-        <option value="seconds">sec</option>
-        <option value="minutes">min</option>
-        <option value="hours">hr</option>
-      </select>
-      <button id="startBtn" class="btn-start">▶ START</button>
-      <button id="stopBtn" class="btn-stop" disabled>⏹ STOP</button>
-    </div>
-
-    <button id="stopAlarmBtn" class="btn-alarm" style="display:none;">🔕 STOP ALARM</button>
+    <button id="stopAlarmBtn" class="btn btn-danger" style="display:none;">Stop alarm</button>
   </div>
 
-  <audio id="alarmAudio" loop><source src="alert.mp3" type="audio/mpeg"></audio>
   <script src="popup.js"></script>
 </body>
+
 </html>
