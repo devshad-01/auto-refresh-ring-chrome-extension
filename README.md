@@ -5,7 +5,7 @@
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?logo=javascript&logoColor=111)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A production-style Chrome extension that monitors any open webpage for target text and triggers persistent alerts when a condition is matched.
+A  Chrome extension that monitors any open webpage for target text and triggers persistent alerts when a condition is matched.
 
 ## Highlights
 
