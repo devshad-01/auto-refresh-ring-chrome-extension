@@ -68,14 +68,6 @@ A production-style Chrome extension that monitors any open webpage for target te
 - `offscreen`: play alarm audio from an offscreen document.
 - `host_permissions: <all_urls>`: monitor user-selected pages.
 
-## Portfolio Value
-
-This project demonstrates:
-
-- Event-driven extension architecture in Manifest V3.
-- Browser API integration across background, popup, and offscreen contexts.
-- Resilient monitoring flow with state persistence and alert lifecycle management.
-- Practical UX polish for a compact, functional extension interface.
 
 ## Roadmap
 
